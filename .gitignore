@@ -1,0 +1,7 @@
+*.py[cod]
+*.sw[op]
+/build
+/dist
+/squery_lite.egg-info
+/.cache
+/.tox
