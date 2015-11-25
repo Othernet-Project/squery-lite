@@ -24,7 +24,7 @@ setup(
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',
-        'Topic :: Library',
+        'Topic :: Software Development :: Libraries',
         'Environment :: Web Environment',
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Programming Language :: Python :: 2.7',
