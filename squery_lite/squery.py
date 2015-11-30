@@ -215,8 +215,8 @@ class Database(object):
             raise
 
     @classmethod
-    def connect(cls, dbpath):
-        return Connection(dbpath)
+    def connect(cls, database, **kwargs):
+        return Connection(database)
 
     def __repr__(self):
         return "<Database connection='%s'>" % self.conn.path
