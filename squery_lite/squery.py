@@ -21,6 +21,7 @@ from sqlize import (From, Where, Group, Order, Limit, Select, Update, Delete,
                     Insert, Replace, sqlin, sqlarray)
 from pytz import utc
 
+from .migrations import migrate
 from .utils import basestring
 
 
@@ -103,6 +104,7 @@ class Connection(object):
 
 class Database(object):
 
+    migrate = staticmethod(migrate)
     # Provide access to query classes for easier access
     sqlin = staticmethod(sqlin)
     sqlarray = staticmethod(sqlarray)
