@@ -1,15 +1,13 @@
 import os
 from setuptools import setup, find_packages
 
-import squery_lite as pkg
+VERSION = '1.1'
 
 
 def read(fname):
     """ Return content of specified file """
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-
-VERSION = pkg.__version__
 
 setup(
     name='squery-lite',
