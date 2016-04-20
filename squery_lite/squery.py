@@ -10,6 +10,7 @@ file that comes with the source code, or http://www.gnu.org/licenses/gpl.txt.
 
 from __future__ import print_function
 
+import os
 import calendar
 import contextlib
 import datetime
@@ -219,6 +220,14 @@ class Database(object):
     @classmethod
     def connect(cls, database, **kwargs):
         return Connection(database)
+
+    def recreate(self, path):
+        self.drop(path)
+        self.connect(path)
+
+    @classmethod
+    def drop(cls, path):
+        os.remove(path)
 
     def __repr__(self):
         return "<Database connection='%s'>" % self.conn.path
