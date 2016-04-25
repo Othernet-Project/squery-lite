@@ -50,6 +50,7 @@ class TestContainer(object):
     """
 
     def __init__(self, databases, path='/tmp', conf={}):
+        self.path = path
         self.conf = conf
         self.databases = {}
         self.add_databases(databases)
@@ -61,7 +62,8 @@ class TestContainer(object):
     def add_database(self, database):
         name = database['name']
         migrations = database.get('migrations')
-        real_dbname = os.path.join(random_name('test_{}'.format(name)))
+        real_dbname = os.path.join(
+            self.path, random_name('test_{}'.format(name)))
         conn = Database.connect(database=real_dbname)
         self.databases[name] = {
             'name': real_dbname,
