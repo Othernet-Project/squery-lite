@@ -87,7 +87,6 @@ class TestContainer(object):
             self.setup(dbname)
 
     def setup(self, dbname):
-        print('Setting up: {}'.format(dbname))
         db = self.databases[dbname]['db']
         path = self.databases[dbname]['name']
         migrations = self.databases[dbname]['migrations']
@@ -100,7 +99,6 @@ class TestContainer(object):
             self.teardown(dbname)
 
     def teardown(self, dbname):
-        print('Tearing down up: {}'.format(dbname))
         name = self.databases[dbname]['name']
         db = self.databases[dbname]['db']
         db.close()
