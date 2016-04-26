@@ -104,6 +104,15 @@ class TestContainer(object):
         db.close()
         Database.drop(name)
 
+    def keys(self):
+        return self.databases.keys()
+
+    def values(self):
+        return map(lambda db: db['db'], self.databases.values())
+
+    def items(self):
+        return zip(self.keys(), self.values())
+
     def __getattr__(self, name):
         try:
             return self.databases[name]['db']
