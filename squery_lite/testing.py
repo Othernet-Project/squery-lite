@@ -45,11 +45,12 @@ class TestContainer(object):
     set-up code will recreate all tables. Full tear-down is only necessary
     after all test code that requires the database has finished using it.
 
-    The location for the databases is specified using the ``path`` argument.
+    The location for the databases is specified using the ``dbdir`` argument.
     The default value is ``'/tmp'``
     """
 
-    def __init__(self, databases, path='/tmp', conf={}):
+    def __init__(self, databases, dbdir='/tmp', conf={}):
+        self.dbdir = dbdir
         self.conf = conf
         self.databases = {}
         self.add_databases(databases)
@@ -61,10 +62,11 @@ class TestContainer(object):
     def add_database(self, database):
         name = database['name']
         migrations = database.get('migrations')
-        real_dbname = os.path.join(random_name('test_{}'.format(name)))
-        conn = Database.connect(database=real_dbname)
+        db_file = os.path.join(
+            self.dbdir, random_name('test_{}'.format(name)))
+        conn = Database.connect(database=db_file)
         self.databases[name] = {
-            'name': real_dbname,
+            'file': db_file,
             'db': Database(conn),
             'migrations': migrations,
         }
@@ -88,7 +90,7 @@ class TestContainer(object):
 
     def setup(self, dbname):
         db = self.databases[dbname]['db']
-        path = self.databases[dbname]['name']
+        path = self.databases[dbname]['file']
         migrations = self.databases[dbname]['migrations']
         db.recreate(path)
         if migrations:
@@ -99,10 +101,10 @@ class TestContainer(object):
             self.teardown(dbname)
 
     def teardown(self, dbname):
-        name = self.databases[dbname]['name']
+        path = self.databases[dbname]['file']
         db = self.databases[dbname]['db']
         db.close()
-        Database.drop(name)
+        Database.drop(path)
 
     def keys(self):
         return self.databases.keys()
