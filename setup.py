@@ -4,7 +4,7 @@ import os
 from setuptools import setup
 
 
-VERSION = '2.0.dev1'
+VERSION = '2.0.dev2'
 
 
 def read(fname):
