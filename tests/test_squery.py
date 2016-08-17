@@ -344,8 +344,16 @@ def test_transaction(*ignored):
     db = mod.Database(mock.Mock())
     with db.transaction() as cur:
         cur.execute.assert_called_once_with('BEGIN;')
-    print(cur.conn, db.conn)
     assert cur.conn.commit.called
+
+
+@mock.patch(MOD + '.sqlite3')
+@mock.patch(MOD + '.Cursor')
+def test_transaction_exclusive(*ignored):
+    """ Transactions can be exclusive """
+    db = mod.Database(mock.Mock())
+    with db.transaction(exclusive=True) as cur:
+        cur.execute.assert_called_once_with('BEGIN EXCLUSIVE;')
 
 
 @mock.patch(MOD + '.sqlite3')

@@ -292,12 +292,15 @@ class Database(object):
         return self.conn
 
     @contextlib.contextmanager
-    def transaction(self, silent=False, new_connection=False):
+    def transaction(self, silent=False, new_connection=False, exclusive=False):
         if new_connection:
             cursor = self.cursor(connection=self.conn.new())
         else:
             cursor = self.cursor()
-        cursor.execute('BEGIN;')
+        if exclusive:
+            cursor.execute('BEGIN EXCLUSIVE;')
+        else:
+            cursor.execute('BEGIN;')
         try:
             yield cursor
             cursor.conn.commit()
