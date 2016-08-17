@@ -70,6 +70,49 @@ def test_can_clone_connection(sqlite3):
     assert conn.path == conn2.path
 
 
+def test_registering_custom_function():
+    """ Connection can register custom functions """
+
+    def addtwo(s):
+        return s + 2
+
+    conn = mod.Connection(':memory:', funcs=[addtwo])
+    cur = mod.Cursor(conn)
+    cur.execute('create table foo(i)')
+    cur.execute('insert into foo values (1)')
+    cur.execute('insert into foo values (2)')
+    cur.execute('insert into foo values (3)')
+    cur.execute('insert into foo values (4)')
+    cur.execute('insert into foo values (5)')
+    cur.execute('select addtwo(i) as a from foo order by i')
+    assert [r.a for r in cur] == [3, 4, 5, 6, 7]
+
+
+def test_registering_custom_aggregate():
+    """ Connection can register custom aggregate """
+
+    class Concat(object):
+        def __init__(self):
+            self.s = ''
+
+        def step(self, s):
+            self.s += str(s)
+
+        def finalize(self):
+            return self.s
+
+    conn = mod.Connection(':memory:', aggregates=[Concat])
+    cur = mod.Cursor(conn)
+    cur.execute('create table foo(i)')
+    cur.execute("insert into foo values ('a')")
+    cur.execute("insert into foo values ('b')")
+    cur.execute("insert into foo values ('c')")
+    cur.execute("insert into foo values ('d')")
+    cur.execute("insert into foo values ('e')")
+    cur.execute("select concat(i) as a from foo order by i")
+    assert cur.result.a == 'abcde'
+
+
 @mock.patch(MOD + '.sqlite3')
 def test_db_connect(sqlite3):
     mod.Database.connect('foo.db')

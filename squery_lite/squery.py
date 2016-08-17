@@ -14,6 +14,7 @@ import os
 import re
 import logging
 import sqlite3
+import inspect
 import calendar
 import datetime
 import functools
@@ -86,8 +87,10 @@ class Row(sqlite3.Row):
 
 class Connection(object):
     """ Wrapper for sqlite3.Connection object """
-    def __init__(self, path=':memory:',):
+    def __init__(self, path=':memory:', funcs=[], aggregates=[]):
         self.path = path
+        self.funcs = funcs
+        self.aggregates = aggregates
         self.connect()
 
     def connect(self):
@@ -97,11 +100,24 @@ class Connection(object):
 
         # Allow manual transaction handling, see http://bit.ly/1C7E7EQ
         self._conn.isolation_level = None
+
+        for fn in self.funcs:
+            self.add_func(fn)
+
+        for aggr in self.aggregates:
+            self.add_aggregate(aggr)
+
         # More on WAL: https://www.sqlite.org/isolation.html
         # Requires SQLite >= 3.7.0
         cur = self._conn.cursor()
         cur.execute('PRAGMA journal_mode=WAL;')
         logging.debug('Connected to database {}'.format(self.path))
+
+    def add_func(self, fn):
+        self._conn.create_function(*self.inspect_fn(fn))
+
+    def add_aggregate(self, aggr):
+        self._conn.create_aggregate(*self.inspect_aggr(aggr))
 
     def close(self):
         self._conn.commit()
@@ -113,6 +129,18 @@ class Connection(object):
         a new instance of the ``Connection`` object.
         """
         return self.__class__(self.path)
+
+    @staticmethod
+    def inspect_fn(fn):
+        name = fn.__name__
+        nargs = len(inspect.getargspec(fn).args)
+        return (name, nargs, fn)
+
+    @staticmethod
+    def inspect_aggr(cls):
+        name = cls.__name__.lower()
+        nargs = len(inspect.getargspec(cls.step).args) - 1
+        return (name, nargs, cls)
 
     def __getattr__(self, attr):
         conn = object.__getattribute__(self, '_conn')
