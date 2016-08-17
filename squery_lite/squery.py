@@ -132,8 +132,16 @@ class Connection(object):
 
     @staticmethod
     def inspect_fn(fn):
-        name = fn.__name__
-        nargs = len(inspect.getargspec(fn).args)
+        try:
+            name = fn.__name__
+        except AttributeError:
+            # This is a callable object, but not a function
+            name = fn.__class__.__name__.lower()
+        try:
+            nargs = len(inspect.getargspec(fn).args)
+        except TypeError:
+            # This is a callable object, but not a function
+            nargs = len(inspect.getargspec(fn.__call__).args) - 1
         return (name, nargs, fn)
 
     @staticmethod
