@@ -1,3 +1,2 @@
 recursive-include squery_lite *
-recursive-exclude tests *
 include LICENSE
