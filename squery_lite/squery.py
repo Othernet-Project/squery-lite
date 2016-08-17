@@ -270,6 +270,9 @@ class Database(object):
             if silent:
                 return
             raise
+        finally:
+            if new_connection:
+                cursor.conn.close()
 
     @classmethod
     def connect(cls, database, **kwargs):

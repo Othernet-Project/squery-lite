@@ -1,4 +1,5 @@
 import mock
+import pytest
 
 from squery_lite import squery as mod
 
@@ -309,7 +310,7 @@ def test_transaction_silent_rollback(*ignored):
         assert False, 'Expected not to raise'
 
 
-def test_transaction_with_new_connection(*ignored):
+def test_transaction_with_new_connection():
     """ Transaction can use a new connection """
     db = mod.Database(mod.Connection(':memory:'))
     with db.transaction() as cur:
@@ -317,6 +318,17 @@ def test_transaction_with_new_connection(*ignored):
     with db.transaction(new_connection=True) as cur:
         assert db.conn is not cur.conn
         assert cur.conn.path == db.conn.path
+
+
+def test_transaction_with_new_connection_closes():
+    db = mod.Database(mod.Connection(':memory:'))
+    with db.transaction() as cur:
+        conn1 = cur.conn
+    conn1.cursor()
+    with db.transaction(new_connection=True) as cur:
+        conn2 = cur.conn
+    with pytest.raises(mod.sqlite3.ProgrammingError):
+        conn2.cursor()
 
 
 @mock.patch(MOD + '.sqlite3')
