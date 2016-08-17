@@ -107,6 +107,13 @@ class Connection(object):
         self._conn.commit()
         self._conn.close()
 
+    def new(self):
+        """
+        Establish a new connection to the same database as this one and return
+        a new instance of the ``Connection`` object.
+        """
+        return self.__class__(self.path)
+
     def __getattr__(self, attr):
         conn = object.__getattribute__(self, '_conn')
         return getattr(conn, attr)
@@ -122,8 +129,9 @@ class Connection(object):
 
 
 class Cursor(object):
-    def __init__(self, cursor, debug=False):
-        self.cursor = cursor
+    def __init__(self, connection, debug=False):
+        self.conn = connection
+        self.cursor = connection.cursor()
         self.debug = debug
 
     @property
@@ -185,12 +193,14 @@ class Database(object):
         self.conn = conn
         self.debug = debug
 
-    def cursor(self, debug=None):
+    def cursor(self, debug=None, connection=None):
         """
         Return a new cursor
         """
+        if connection is None:
+            connection = self.conn
         debug = self.debug if debug is None else debug
-        return Cursor(self.conn.cursor(), debug)
+        return Cursor(connection, debug)
 
     def query(self, qry, *params, **kwparams):
         """ Perform a query
@@ -246,13 +256,17 @@ class Database(object):
         return self.conn
 
     @contextlib.contextmanager
-    def transaction(self, silent=False):
-        cursor = self.execute('BEGIN;')
+    def transaction(self, silent=False, new_connection=False):
+        if new_connection:
+            cursor = self.cursor(connection=self.conn.new())
+        else:
+            cursor = self.cursor()
+        cursor.execute('BEGIN;')
         try:
             yield cursor
-            self.commit()
+            cursor.conn.commit()
         except Exception:
-            self.rollback()
+            cursor.conn.rollback()
             if silent:
                 return
             raise

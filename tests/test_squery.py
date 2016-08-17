@@ -58,6 +58,17 @@ def test_can_set_attributes_on_underlying_connection(sqlite3):
     assert conn.isolation_level == conn._conn.isolation_level
 
 
+@mock.patch(MOD + '.sqlite3', autospec=True)
+def test_can_clone_connection(sqlite3):
+    """ Duplicate connection objects can be created with new() method """
+    conn = mod.Connection('foo.db')
+    assert sqlite3.connect.call_count == 1
+    conn2 = conn.new()
+    assert sqlite3.connect.call_count == 2
+    assert conn is not conn2
+    assert conn.path == conn2.path
+
+
 @mock.patch(MOD + '.sqlite3')
 def test_db_connect(sqlite3):
     mod.Database.connect('foo.db')
@@ -270,7 +281,8 @@ def test_transaction(*ignored):
     db = mod.Database(mock.Mock())
     with db.transaction() as cur:
         cur.execute.assert_called_once_with('BEGIN;')
-    assert db.conn.commit.called
+    print(cur.conn, db.conn)
+    assert cur.conn.commit.called
 
 
 @mock.patch(MOD + '.sqlite3')
@@ -278,11 +290,11 @@ def transaction_rollback(*ignored):
     """ Transactions rolls back on exception """
     db = mod.Database(mock.Mock())
     try:
-        with db.transaction():
+        with db.transaction() as cur:
             raise RuntimeError()
         assert False, 'Expected to raise'
     except RuntimeError:
-        assert db.conn.rollback.called
+        assert cur.conn.rollback.called
 
 
 @mock.patch(MOD + '.sqlite3')
@@ -295,6 +307,16 @@ def test_transaction_silent_rollback(*ignored):
         assert db.conn.rollback.called
     except RuntimeError:
         assert False, 'Expected not to raise'
+
+
+def test_transaction_with_new_connection(*ignored):
+    """ Transaction can use a new connection """
+    db = mod.Database(mod.Connection(':memory:'))
+    with db.transaction() as cur:
+        assert db.conn is cur.conn
+    with db.transaction(new_connection=True) as cur:
+        assert db.conn is not cur.conn
+        assert cur.conn.path == db.conn.path
 
 
 @mock.patch(MOD + '.sqlite3')
