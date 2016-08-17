@@ -11,12 +11,13 @@ file that comes with the source code, or http://www.gnu.org/licenses/gpl.txt.
 from __future__ import print_function
 
 import os
-import calendar
-import contextlib
-import datetime
-import logging
 import re
+import logging
 import sqlite3
+import calendar
+import datetime
+import functools
+import contextlib
 
 from sqlize import (From, Where, Group, Order, Limit, Select, Update, Delete,
                     Insert, Replace, sqlin, sqlarray)
@@ -48,6 +49,23 @@ def to_utc_timestamp(dt):
 sqlite3.register_adapter(datetime.datetime, to_utc_timestamp)
 for date_type in SQLITE_DATE_TYPES:
     sqlite3.register_converter(date_type, from_utc_timestamp)
+
+
+def convert_query(fn):
+    """ Ensure any SQLExpression instances are serialized
+
+    :param qry:     raw SQL string or SQLExpression instance
+    :returns:       raw SQL string
+    """
+    @functools.wraps(fn)
+    def wrapper(self, qry, *args, **kwargs):
+        if hasattr(qry, 'serialize'):
+            qry = qry.serialize()
+        assert isinstance(qry, basestring), 'Expected qry to be string'
+        if self.debug:
+            print('SQL:', qry)
+        return fn(self, qry, *args, **kwargs)
+    return wrapper
 
 
 class Row(sqlite3.Row):
@@ -103,6 +121,48 @@ class Connection(object):
         return "<Connection path='%s'>" % self.path
 
 
+class Cursor(object):
+    def __init__(self, cursor, debug=False):
+        self.cursor = cursor
+        self.debug = debug
+
+    @property
+    def results(self):
+        return self.cursor.fetchall()
+
+    @property
+    def result(self):
+        return self.cursor.fetchone()
+
+    def __iter__(self):
+        return self.cursor
+
+    @convert_query
+    def query(self, qry, *params, **kwparams):
+        """ Perform a query
+
+        Any positional arguments are converted to a list of arguments for the
+        query, and are used to populate any '?' placeholders. The keyword
+        arguments are converted to a mapping which provides values to ':name'
+        placeholders. These do not apply to SQLExpression instances.
+
+        :param qry:     raw SQL or SQLExpression instance
+        :returns:       cursor object
+        """
+        self.cursor.execute(qry, params or kwparams)
+
+    @convert_query
+    def execute(self, qry, *args, **kwargs):
+        self.cursor.execute(qry, *args, **kwargs)
+
+    @convert_query
+    def executemany(self, qry, *args, **kwargs):
+        self.cursor.executemany(qry, *args, **kwargs)
+
+    def executescript(self, sql):
+        self.cursor.executescript(sql)
+
+
 class Database(object):
 
     migrate = staticmethod(migrate)
@@ -124,20 +184,13 @@ class Database(object):
     def __init__(self, conn, debug=False):
         self.conn = conn
         self.debug = debug
-        self._cursor = None
 
-    def _convert_query(self, qry):
-        """ Ensure any SQLExpression instances are serialized
-
-        :param qry:     raw SQL string or SQLExpression instance
-        :returns:       raw SQL string
+    def cursor(self, debug=None):
         """
-        if hasattr(qry, 'serialize'):
-            qry = qry.serialize()
-        assert isinstance(qry, basestring), 'Expected qry to be string'
-        if self.debug:
-            print('SQL:', qry)
-        return qry
+        Return a new cursor
+        """
+        debug = self.debug if debug is None else debug
+        return Cursor(self.conn.cursor(), debug)
 
     def query(self, qry, *params, **kwparams):
         """ Perform a query
@@ -150,20 +203,24 @@ class Database(object):
         :param qry:     raw SQL or SQLExpression instance
         :returns:       cursor object
         """
-        qry = self._convert_query(qry)
-        self.cursor.execute(qry, params or kwparams)
-        return self.cursor
+        cursor = self.cursor()
+        cursor.query(qry, *params, **kwparams)
+        return cursor
 
     def execute(self, qry, *args, **kwargs):
-        qry = self._convert_query(qry)
-        self.cursor.execute(qry, *args, **kwargs)
+        cursor = self.cursor()
+        cursor.execute(qry, *args, **kwargs)
+        return cursor
 
     def executemany(self, qry, *args, **kwargs):
-        qry = self._convert_query(qry)
-        self.cursor.executemany(qry, *args, **kwargs)
+        cursor = self.cursor()
+        cursor.executemany(qry, *args, **kwargs)
+        return cursor
 
     def executescript(self, sql):
-        self.cursor.executescript(sql)
+        cursor = self.cursor()
+        cursor.executescript(sql)
+        return cursor
 
     def commit(self):
         self.conn.commit()
@@ -173,16 +230,13 @@ class Database(object):
         self.conn.commit()
 
     def refresh_table_stats(self):
-        self.execute('ANALYZE sqlite_master;')
+        return self.execute('ANALYZE sqlite_master;')
 
     def acquire_lock(self):
-        self.execute('BEGIN EXCLUSIVE;')
+        return self.execute('BEGIN EXCLUSIVE;')
 
     def close(self):
         self.conn.close()
-        # the cached cursor object must be reset, otherwise after reconnecting
-        # it would still try to use it, and would run into the closed db issue
-        self._cursor = None
 
     def reconnect(self):
         self.conn.connect()
@@ -191,25 +245,11 @@ class Database(object):
     def connection(self):
         return self.conn
 
-    @property
-    def cursor(self):
-        if self._cursor is None:
-            self._cursor = self.conn.cursor()
-        return self._cursor
-
-    @property
-    def results(self):
-        return self.cursor.fetchall()
-
-    @property
-    def result(self):
-        return self.cursor.fetchone()
-
     @contextlib.contextmanager
     def transaction(self, silent=False):
-        self.execute('BEGIN;')
+        cursor = self.execute('BEGIN;')
         try:
-            yield self.cursor
+            yield cursor
             self.commit()
         except Exception:
             self.rollback()
