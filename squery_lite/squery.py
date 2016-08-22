@@ -194,17 +194,21 @@ class Cursor(object):
         :returns:       cursor object
         """
         self.cursor.execute(qry, params or kwparams)
+        return self
 
     @convert_query
     def execute(self, qry, *args, **kwargs):
         self.cursor.execute(qry, *args, **kwargs)
+        return self
 
     @convert_query
     def executemany(self, qry, *args, **kwargs):
         self.cursor.executemany(qry, *args, **kwargs)
+        return self
 
     def executescript(self, sql):
         self.cursor.executescript(sql)
+        return self
 
 
 class Database(object):
@@ -270,10 +274,12 @@ class Database(object):
 
     def commit(self):
         self.conn.commit()
+        return self
 
     def rollback(self):
         self.conn.rollback()
         self.conn.commit()
+        return self
 
     def refresh_table_stats(self):
         return self.execute('ANALYZE sqlite_master;')
@@ -283,9 +289,11 @@ class Database(object):
 
     def close(self):
         self.conn.close()
+        return self
 
     def reconnect(self):
         self.conn.connect()
+        return self
 
     @property
     def connection(self):
@@ -320,6 +328,7 @@ class Database(object):
     def recreate(self, path):
         self.drop(path)
         self.connect(path)
+        return self
 
     @classmethod
     def drop(cls, path):
