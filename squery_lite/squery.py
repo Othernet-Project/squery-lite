@@ -21,7 +21,8 @@ import functools
 import contextlib
 
 from sqlize import (From, Where, Group, Order, Limit, Select, Update, Delete,
-                    Insert, Replace, sqlin, sqlarray)
+                    Insert, Replace, sqlin, sqlarray, NATURAL, INNER, CROSS,
+                    OUTER, LEFT_OUTER, LEFT, JOIN)
 from pytz import utc
 
 from .migrations import migrate
@@ -85,7 +86,30 @@ class Row(sqlite3.Row):
         return key in self.keys()
 
 
-class Connection(object):
+class SQLMixin(object):
+    sqlin = staticmethod(sqlin)
+    sqlarray = staticmethod(sqlarray)
+    From = From
+    Where = Where
+    Group = Group
+    Order = Order
+    Limit = Limit
+    Select = Select
+    Update = Update
+    Delete = Delete
+    Insert = Insert
+    Replace = Replace
+    MAX_VARIABLE_NUMBER = MAX_VARIABLE_NUMBER
+    NATURAL = NATURAL
+    INNER = INNER
+    CROSS = CROSS
+    OUTER = OUTER
+    LEFT_OUTER = LEFT_OUTER
+    LEFT = LEFT
+    JOIN = JOIN
+
+
+class Connection(SQLMixin):
     """ Wrapper for sqlite3.Connection object """
     def __init__(self, path=':memory:', funcs=[], aggregates=[]):
         self.path = path
@@ -164,7 +188,7 @@ class Connection(object):
         return "<Connection path='%s'>" % self.path
 
 
-class Cursor(object):
+class Cursor(SQLMixin):
     def __init__(self, connection, debug=False):
         self.conn = connection
         self.cursor = connection.cursor()
@@ -211,23 +235,8 @@ class Cursor(object):
         return self
 
 
-class Database(object):
-
+class Database(SQLMixin):
     migrate = staticmethod(migrate)
-    # Provide access to query classes for easier access
-    sqlin = staticmethod(sqlin)
-    sqlarray = staticmethod(sqlarray)
-    From = From
-    Where = Where
-    Group = Group
-    Order = Order
-    Limit = Limit
-    Select = Select
-    Update = Update
-    Delete = Delete
-    Insert = Insert
-    Replace = Replace
-    MAX_VARIABLE_NUMBER = MAX_VARIABLE_NUMBER
 
     def __init__(self, conn, debug=False):
         self.conn = conn
