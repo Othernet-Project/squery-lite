@@ -439,14 +439,14 @@ def test_row_factory_unicode_key():
 
 
 @mock.patch(MOD + '.sqlite3')
-@mock.patch(MOD + '.print', create=True)
-def test_debug_printing(mock_print, *ignored):
+@mock.patch(MOD + '.logging')
+def test_debug_printing(mock_logging, *ignored):
     db = mod.Database(mock.Mock(), debug=False)
     db.query('SELECT * FROM foo;')
-    assert mock_print.called is False
+    assert mock_logging.debug.called is False
     db.debug = True
     db.query('SELECT * FROM foo;')
-    mock_print.assert_called_once_with('SQL:', 'SELECT * FROM foo;')
+    mock_logging.debug.assert_called_once_with('SQL: %s', 'SELECT * FROM foo;')
 
 
 def test_cursor_iteration():
