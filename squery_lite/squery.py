@@ -64,7 +64,7 @@ def convert_query(fn):
             qry = qry.serialize()
         assert isinstance(qry, basestring), 'Expected qry to be string'
         if self.debug:
-            print('SQL:', qry)
+            logging.debug('SQL: %s', qry)
         return fn(self, qry, *args, **kwargs)
     return wrapper
 
