@@ -88,6 +88,25 @@ def test_registering_custom_function():
     assert [r.a for r in cur] == [3, 4, 5, 6, 7]
 
 
+def test_registering_custom_function_with_method():
+    """ Connection can register custom functions """
+
+    def addtwo(s):
+        return s + 2
+
+    conn = mod.Connection(':memory:')
+    conn.add_func(addtwo)
+    cur = mod.Cursor(conn)
+    cur.execute('create table foo(i)')
+    cur.execute('insert into foo values (1)')
+    cur.execute('insert into foo values (2)')
+    cur.execute('insert into foo values (3)')
+    cur.execute('insert into foo values (4)')
+    cur.execute('insert into foo values (5)')
+    cur.execute('select addtwo(i) as a from foo order by i')
+    assert [r.a for r in cur] == [3, 4, 5, 6, 7]
+
+
 def test_registering_custom_callable():
     """ Connection can register custom functions as callables """
 
