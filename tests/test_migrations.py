@@ -112,14 +112,15 @@ def test_get_version(unpack_version):
     db = mock.Mock()
     assert mod.get_version(db) == unpack_version.return_value
     db.query.assert_any_call(mod.GET_VERSION_SQL)
-    unpack_version.assert_called_once_with(db.result.user_version)
+    unpack_version.assert_called_once_with(
+        db.query.return_value.result.user_version)
 
 
 @mock.patch.object(mod, 'drop_db')
 def test_get_version_drop_db(drop_db):
     """ Version-tracking table is crated if it doesn't exist """
     db = mock.Mock()
-    db.result.user_version = None
+    db.query.return_value.result.user_version = None
     assert mod.get_version(db) == (0, 0)
     drop_db.assert_called_once_with(db)
 

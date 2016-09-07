@@ -11,15 +11,18 @@ file that comes with the source code, or http://www.gnu.org/licenses/gpl.txt.
 from __future__ import print_function
 
 import os
-import calendar
-import contextlib
-import datetime
-import logging
 import re
+import logging
 import sqlite3
+import inspect
+import calendar
+import datetime
+import functools
+import contextlib
 
 from sqlize import (From, Where, Group, Order, Limit, Select, Update, Delete,
-                    Insert, Replace, sqlin, sqlarray)
+                    Insert, Replace, sqlin, sqlarray, NATURAL, INNER, CROSS,
+                    OUTER, LEFT_OUTER, LEFT, JOIN)
 from pytz import utc
 
 from .migrations import migrate
@@ -50,6 +53,23 @@ for date_type in SQLITE_DATE_TYPES:
     sqlite3.register_converter(date_type, from_utc_timestamp)
 
 
+def convert_query(fn):
+    """ Ensure any SQLExpression instances are serialized
+
+    :param qry:     raw SQL string or SQLExpression instance
+    :returns:       raw SQL string
+    """
+    @functools.wraps(fn)
+    def wrapper(self, qry, *args, **kwargs):
+        if hasattr(qry, 'serialize'):
+            qry = qry.serialize()
+        assert isinstance(qry, basestring), 'Expected qry to be string'
+        if self.debug:
+            logging.debug('SQL: %s', qry)
+        return fn(self, qry, *args, **kwargs)
+    return wrapper
+
+
 class Row(sqlite3.Row):
     """ sqlite.Row subclass that allows attribute access to items """
     def __getattr__(self, key):
@@ -66,10 +86,35 @@ class Row(sqlite3.Row):
         return key in self.keys()
 
 
-class Connection(object):
+class SQLMixin(object):
+    sqlin = staticmethod(sqlin)
+    sqlarray = staticmethod(sqlarray)
+    From = From
+    Where = Where
+    Group = Group
+    Order = Order
+    Limit = Limit
+    Select = Select
+    Update = Update
+    Delete = Delete
+    Insert = Insert
+    Replace = Replace
+    MAX_VARIABLE_NUMBER = MAX_VARIABLE_NUMBER
+    NATURAL = NATURAL
+    INNER = INNER
+    CROSS = CROSS
+    OUTER = OUTER
+    LEFT_OUTER = LEFT_OUTER
+    LEFT = LEFT
+    JOIN = JOIN
+
+
+class Connection(SQLMixin):
     """ Wrapper for sqlite3.Connection object """
-    def __init__(self, path=':memory:',):
+    def __init__(self, path=':memory:', funcs=[], aggregates=[]):
         self.path = path
+        self.funcs = funcs
+        self.aggregates = aggregates
         self.connect()
 
     def connect(self):
@@ -79,15 +124,55 @@ class Connection(object):
 
         # Allow manual transaction handling, see http://bit.ly/1C7E7EQ
         self._conn.isolation_level = None
+
+        for fn in self.funcs:
+            self.add_func(fn)
+
+        for aggr in self.aggregates:
+            self.add_aggregate(aggr)
+
         # More on WAL: https://www.sqlite.org/isolation.html
         # Requires SQLite >= 3.7.0
         cur = self._conn.cursor()
         cur.execute('PRAGMA journal_mode=WAL;')
         logging.debug('Connected to database {}'.format(self.path))
 
+    def add_func(self, fn):
+        self._conn.create_function(*self.inspect_fn(fn))
+
+    def add_aggregate(self, aggr):
+        self._conn.create_aggregate(*self.inspect_aggr(aggr))
+
     def close(self):
         self._conn.commit()
         self._conn.close()
+
+    def new(self):
+        """
+        Establish a new connection to the same database as this one and return
+        a new instance of the ``Connection`` object.
+        """
+        return self.__class__(self.path)
+
+    @staticmethod
+    def inspect_fn(fn):
+        try:
+            name = fn.__name__
+        except AttributeError:
+            # This is a callable object, but not a function
+            name = fn.__class__.__name__.lower()
+        try:
+            nargs = len(inspect.getargspec(fn).args)
+        except TypeError:
+            # This is a callable object, but not a function
+            nargs = len(inspect.getargspec(fn.__call__).args) - 1
+        return (name, nargs, fn)
+
+    @staticmethod
+    def inspect_aggr(cls):
+        name = cls.__name__.lower()
+        nargs = len(inspect.getargspec(cls.step).args) - 1
+        return (name, nargs, cls)
 
     def __getattr__(self, attr):
         conn = object.__getattribute__(self, '_conn')
@@ -103,41 +188,68 @@ class Connection(object):
         return "<Connection path='%s'>" % self.path
 
 
-class Database(object):
+class Cursor(SQLMixin):
+    def __init__(self, connection, debug=False):
+        self.conn = connection
+        self.cursor = connection.cursor()
+        self.debug = debug
 
+    @property
+    def results(self):
+        return self.cursor.fetchall()
+
+    @property
+    def result(self):
+        return self.cursor.fetchone()
+
+    def __iter__(self):
+        return self.cursor
+
+    @convert_query
+    def query(self, qry, *params, **kwparams):
+        """ Perform a query
+
+        Any positional arguments are converted to a list of arguments for the
+        query, and are used to populate any '?' placeholders. The keyword
+        arguments are converted to a mapping which provides values to ':name'
+        placeholders. These do not apply to SQLExpression instances.
+
+        :param qry:     raw SQL or SQLExpression instance
+        :returns:       cursor object
+        """
+        self.cursor.execute(qry, params or kwparams)
+        return self
+
+    @convert_query
+    def execute(self, qry, *args, **kwargs):
+        self.cursor.execute(qry, *args, **kwargs)
+        return self
+
+    @convert_query
+    def executemany(self, qry, *args, **kwargs):
+        self.cursor.executemany(qry, *args, **kwargs)
+        return self
+
+    def executescript(self, sql):
+        self.cursor.executescript(sql)
+        return self
+
+
+class Database(SQLMixin):
     migrate = staticmethod(migrate)
-    # Provide access to query classes for easier access
-    sqlin = staticmethod(sqlin)
-    sqlarray = staticmethod(sqlarray)
-    From = From
-    Where = Where
-    Group = Group
-    Order = Order
-    Limit = Limit
-    Select = Select
-    Update = Update
-    Delete = Delete
-    Insert = Insert
-    Replace = Replace
-    MAX_VARIABLE_NUMBER = MAX_VARIABLE_NUMBER
 
     def __init__(self, conn, debug=False):
         self.conn = conn
         self.debug = debug
-        self._cursor = None
 
-    def _convert_query(self, qry):
-        """ Ensure any SQLExpression instances are serialized
-
-        :param qry:     raw SQL string or SQLExpression instance
-        :returns:       raw SQL string
+    def cursor(self, debug=None, connection=None):
         """
-        if hasattr(qry, 'serialize'):
-            qry = qry.serialize()
-        assert isinstance(qry, basestring), 'Expected qry to be string'
-        if self.debug:
-            print('SQL:', qry)
-        return qry
+        Return a new cursor
+        """
+        if connection is None:
+            connection = self.conn
+        debug = self.debug if debug is None else debug
+        return Cursor(connection, debug)
 
     def query(self, qry, *params, **kwparams):
         """ Perform a query
@@ -150,72 +262,73 @@ class Database(object):
         :param qry:     raw SQL or SQLExpression instance
         :returns:       cursor object
         """
-        qry = self._convert_query(qry)
-        self.cursor.execute(qry, params or kwparams)
-        return self.cursor
+        cursor = self.cursor()
+        cursor.query(qry, *params, **kwparams)
+        return cursor
 
     def execute(self, qry, *args, **kwargs):
-        qry = self._convert_query(qry)
-        self.cursor.execute(qry, *args, **kwargs)
+        cursor = self.cursor()
+        cursor.execute(qry, *args, **kwargs)
+        return cursor
 
     def executemany(self, qry, *args, **kwargs):
-        qry = self._convert_query(qry)
-        self.cursor.executemany(qry, *args, **kwargs)
+        cursor = self.cursor()
+        cursor.executemany(qry, *args, **kwargs)
+        return cursor
 
     def executescript(self, sql):
-        self.cursor.executescript(sql)
+        cursor = self.cursor()
+        cursor.executescript(sql)
+        return cursor
 
     def commit(self):
         self.conn.commit()
+        return self
 
     def rollback(self):
         self.conn.rollback()
         self.conn.commit()
+        return self
 
     def refresh_table_stats(self):
-        self.execute('ANALYZE sqlite_master;')
+        return self.execute('ANALYZE sqlite_master;')
 
     def acquire_lock(self):
-        self.execute('BEGIN EXCLUSIVE;')
+        return self.execute('BEGIN EXCLUSIVE;')
 
     def close(self):
         self.conn.close()
-        # the cached cursor object must be reset, otherwise after reconnecting
-        # it would still try to use it, and would run into the closed db issue
-        self._cursor = None
+        return self
 
     def reconnect(self):
         self.conn.connect()
+        return self
 
     @property
     def connection(self):
         return self.conn
 
-    @property
-    def cursor(self):
-        if self._cursor is None:
-            self._cursor = self.conn.cursor()
-        return self._cursor
-
-    @property
-    def results(self):
-        return self.cursor.fetchall()
-
-    @property
-    def result(self):
-        return self.cursor.fetchone()
-
     @contextlib.contextmanager
-    def transaction(self, silent=False):
-        self.execute('BEGIN;')
+    def transaction(self, silent=False, new_connection=False, exclusive=False):
+        if new_connection:
+            cursor = self.cursor(connection=self.conn.new())
+        else:
+            cursor = self.cursor()
+        if exclusive:
+            cursor.execute('BEGIN EXCLUSIVE;')
+        else:
+            cursor.execute('BEGIN;')
         try:
-            yield self.cursor
-            self.commit()
+            yield cursor
+            cursor.conn.commit()
         except Exception:
-            self.rollback()
+            cursor.conn.rollback()
             if silent:
                 return
             raise
+        finally:
+            if new_connection:
+                cursor.conn.close()
 
     @classmethod
     def connect(cls, database, **kwargs):
@@ -224,6 +337,7 @@ class Database(object):
     def recreate(self, path):
         self.drop(path)
         self.connect(path)
+        return self
 
     @classmethod
     def drop(cls, path):

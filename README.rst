@@ -8,5 +8,5 @@ object-oriented API.
 License
 =======
 
-This library is released under BSD. Please see the ``COPYING`` file in the
+This library is released under BSD. Please see the ``LICENSE`` file in the
 source tree.

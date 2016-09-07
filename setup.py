@@ -4,7 +4,7 @@ import os
 from setuptools import setup
 
 
-VERSION = '1.2'
+VERSION = '2.0'
 
 
 def read(fname):
@@ -24,7 +24,7 @@ setup(
     long_description=read('README.rst'),
     install_requires=[
         'pytz',
-        'sqlize',
+        'sqlize>=1.0.dev1',
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',

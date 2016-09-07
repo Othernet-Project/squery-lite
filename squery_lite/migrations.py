@@ -122,8 +122,7 @@ def get_version(db):
     :param db:  connetion object
     :returns:   current migration version
     """
-    db.query(GET_VERSION_SQL)
-    version = db.result.user_version
+    version = db.query(GET_VERSION_SQL).result.user_version
     if not version:
         drop_db(db)
         return (0, 0)
